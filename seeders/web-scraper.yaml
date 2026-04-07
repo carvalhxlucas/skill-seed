@@ -1,0 +1,32 @@
+id: web-scraper
+name: Web Scraper
+version: 1.0.0
+category: automation
+description: >
+  Teaches an agent to extract structured data from websites using Python tools
+  including requests, BeautifulSoup, and Playwright. Covers static page scraping,
+  JavaScript-rendered content, pagination, rate limiting, and data normalization.
+
+curriculum:
+  - "Fetch an HTML page with requests and parse it with BeautifulSoup"
+  - "Scrape a product table from an e-commerce page and extract name, price, and SKU"
+  - "Follow pagination links across multiple pages and aggregate all results"
+  - "Handle JavaScript-rendered content using Playwright async API"
+  - "Implement polite scraping with request delays and User-Agent rotation"
+  - "Parse nested HTML structures and extract clean structured data"
+  - "Save scraped data to JSON and CSV formats"
+
+eval_tasks:
+  - task: "Extract all article titles and their URLs from a news homepage HTML"
+    expected_concepts: ["BeautifulSoup", "find_all", "href extraction"]
+  - task: "Scrape an HTML table with headers and convert each row to a dict"
+    expected_concepts: ["table", "thead", "tbody", "zip(headers, cells)"]
+  - task: "Write a Playwright script that waits for a selector before scraping"
+    expected_concepts: ["page.wait_for_selector", "async with", "page.content()"]
+
+eval_threshold: 0.7
+
+seeder:
+  is_root: true
+  maintained_by: skillseed-team
+  reputation_score: 4.8

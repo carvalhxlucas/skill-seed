@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: skillseed
+      POSTGRES_USER: skillseed
+      POSTGRES_PASSWORD: skillseed
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skillseed"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./packages/api
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://skillseed:skillseed@postgres:5432/skillseed
+      REDIS_URL: redis://redis:6379
+      EVAL_THRESHOLD: "0.7"
+      ROOT_SEEDER_PATH: /app/seeders
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./seeders:/app/seeders:ro
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

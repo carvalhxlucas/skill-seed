@@ -1,0 +1,14 @@
+id: my-custom-skill
+name: My Custom Skill
+version: 0.1.0
+category: custom
+description: A custom skill contributed by community.
+curriculum:
+- Do task A
+- Do task B
+eval_tasks:
+- Validate task A
+seeder:
+  is_root: false
+  maintained_by: community
+  reputation_score: 0.0

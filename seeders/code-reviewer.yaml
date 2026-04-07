@@ -1,0 +1,41 @@
+id: code-reviewer
+name: Code Reviewer
+version: 1.0.0
+category: engineering
+description: >
+  Teaches an agent to review Python code for correctness, security vulnerabilities,
+  performance issues, code smells, and style violations. Covers common bug patterns,
+  OWASP security risks, Pythonic refactoring, and constructive feedback techniques.
+
+curriculum:
+  - "Identify a SQL injection vulnerability caused by string concatenation in a query"
+  - "Spot an off-by-one error in a loop iterating over a list index"
+  - "Detect a race condition in a multithreaded Python function"
+  - "Review a function for readability and suggest refactoring with clear variable names"
+  - "Find unused variables, dead code, and unreachable branches"
+  - "Identify an N+1 query problem in ORM usage"
+  - "Review error handling and identify bare except clauses masking real errors"
+
+eval_tasks:
+  - task: >
+      Review this Python function that builds a shell command from user input:
+      `def run(cmd): os.system('ls ' + cmd)`
+      List all security issues.
+    expected_concepts: ["shell injection", "subprocess", "sanitization"]
+  - task: >
+      Identify all issues in this code:
+      `def process(data):
+        result = []
+        for i in range(0, len(data)+1):
+          result.append(data[i] * 2)
+        return result`
+    expected_concepts: ["off-by-one", "IndexError", "range(len(data))"]
+  - task: "Explain what's wrong with: `except: pass` in a try/except block"
+    expected_concepts: ["bare except", "error swallowing", "Exception class"]
+
+eval_threshold: 0.7
+
+seeder:
+  is_root: true
+  maintained_by: skillseed-team
+  reputation_score: 4.9

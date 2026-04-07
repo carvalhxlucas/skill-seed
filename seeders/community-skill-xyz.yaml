@@ -1,0 +1,13 @@
+id: community-skill-xyz
+name: Community Skill XYZ
+version: 0.1.0
+category: community
+description: A community skill.
+curriculum:
+- Learn X
+eval_tasks:
+- Test X
+seeder:
+  is_root: false
+  maintained_by: community
+  reputation_score: 0.0

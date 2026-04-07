@@ -1,0 +1,30 @@
+id: sql-expert
+name: SQL Expert
+version: 1.0.0
+category: data
+description: >
+  Teaches an agent to write efficient, correct SQL queries.
+  Covers SELECT, JOIN, aggregation, subqueries, and query optimization.
+
+curriculum:
+  - "Write a query to find the top 5 customers by total order value"
+  - "Write a query using a LEFT JOIN between orders and customers"
+  - "Optimize a slow query by rewriting it with a CTE"
+  - "Write a query to calculate a 7-day rolling average"
+  - "Write a query using a window function to rank items within groups"
+  - "Create a query with a correlated subquery to find outliers"
+
+eval_tasks:
+  - task: "Find all users who placed more than 3 orders in the last 30 days"
+    expected_concepts: ["GROUP BY", "HAVING", "date filtering"]
+  - task: "Write a query to detect duplicate email addresses in a users table"
+    expected_concepts: ["GROUP BY", "HAVING COUNT > 1"]
+  - task: "Calculate the running total of sales per region using a window function"
+    expected_concepts: ["SUM() OVER", "PARTITION BY", "ORDER BY"]
+
+eval_threshold: 0.7
+
+seeder:
+  is_root: true
+  maintained_by: skillseed-team
+  reputation_score: 5.0
