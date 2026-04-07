@@ -1,7 +1,14 @@
 """SkillSeed Core — protocol, models, registry, and evaluators."""
 
 from skillseed_core.eval import KeywordEvaluator, SimpleEvaluator, SkillEvaluator, ThresholdEvaluator
-from skillseed_core.models import AgentProfile, LearningSession, Skill, SeederProfile
+from skillseed_core.models import (
+    AgentProfile,
+    CurriculumVersion,
+    FeedbackSignal,
+    LearningSession,
+    Skill,
+    SeederProfile,
+)
 from skillseed_core.protocol import (
     CritiqueLoopProtocol,
     PromptDistillationProtocol,
@@ -16,6 +23,8 @@ __all__ = [
     "AgentProfile",
     "LearningSession",
     "SeederProfile",
+    "FeedbackSignal",
+    "CurriculumVersion",
     # protocol
     "SkillTransferProtocol",
     "PromptDistillationProtocol",

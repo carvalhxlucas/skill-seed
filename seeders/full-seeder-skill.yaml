@@ -1,0 +1,13 @@
+id: full-seeder-skill
+name: Full Seeder Skill
+version: 1.0.0
+category: test
+description: Tests new seeder fields.
+curriculum:
+- Task A
+eval_tasks:
+- Eval A
+seeder:
+  is_root: false
+  maintained_by: community
+  reputation_score: 0.0

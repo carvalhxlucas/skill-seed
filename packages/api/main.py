@@ -11,9 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from routers import agents, skills, seed
+from routers import agents, skills, seed, seeders
 from services.learning_service import LearningService
 from services.eval_service import EvalService
+from services.evolution_service import EvolutionService
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -55,6 +56,7 @@ async def lifespan(app: FastAPI):
     """Initialize shared services on startup."""
     app.state.learning_service = LearningService()
     app.state.eval_service = EvalService()
+    app.state.evolution_service = EvolutionService()
     yield
 
 
@@ -113,6 +115,7 @@ async def require_api_key(request: Request, call_next):
 app.include_router(agents.router, prefix="/v1", tags=["agents"])
 app.include_router(skills.router, prefix="/v1", tags=["skills"])
 app.include_router(seed.router, prefix="/v1", tags=["seed"])
+app.include_router(seeders.router, prefix="/v1", tags=["seeders"])
 
 
 @app.get("/", tags=["health"])

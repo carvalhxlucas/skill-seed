@@ -22,8 +22,11 @@ class Skill(BaseModel):
     description: str = Field(..., max_length=2000)
     version: str  # semver
     category: str = Field(..., max_length=64)
-    curriculum: list[str] = Field(..., max_length=50)   # A-4: cap list size
-    eval_tasks: list[str] = Field(..., max_length=50)   # A-4: cap list size
+    curriculum: list[str] = Field(..., max_length=50)
+    eval_tasks: list[str] = Field(..., max_length=50)
+    # Shadow eval tasks — NEVER exposed in public API responses.
+    # Anti-gaming protection: seeders never see these tasks, preventing teaching-to-the-test.
+    shadow_eval_tasks: list[str] = Field(default_factory=list, max_length=20)
 
     model_config = {"frozen": False}
 
@@ -53,7 +56,7 @@ class AgentProfile(BaseModel):
     id: str
     name: str
     framework: str  # "langchain" | "langgraph" | "custom" | etc
-    bloomed_skills: list[str] = Field(default_factory=list)  # skill ids
+    bloomed_skills: list[str] = Field(default_factory=list)
 
     model_config = {"frozen": False}
 
@@ -64,13 +67,58 @@ class LearningSession(BaseModel):
     id: str
     agent_id: str
     skill_id: str
+    seeder_id: str = ""
     status: Literal["pending", "learning", "evaluating", "bloomed", "failed"]
     started_at: datetime
     completed_at: datetime | None = None
     eval_score: float | None = None
-    learned_state: dict = Field(default_factory=dict)  # system prompt delta, memory injections, etc
+    # Shadow eval score — NEVER sent to seeders. Used internally to detect score inflation.
+    shadow_eval_score: float | None = None
+    # Tasks the grower failed during the public eval — included in FeedbackSignal.
+    failed_tasks: list[str] = Field(default_factory=list)
+    learned_state: dict = Field(default_factory=dict)
 
     model_config = {"frozen": False}
+
+
+class FeedbackSignal(BaseModel):
+    """Feedback sent to a seeder after a learning session completes.
+
+    Contains only public eval data. shadow_eval_score is NEVER included.
+    """
+
+    id: str
+    seeder_id: str
+    skill_id: str
+    session_id: str
+    eval_score: float               # public score only — shadow score never sent
+    failed_tasks: list[str] = Field(default_factory=list)
+    grower_responses: dict = Field(default_factory=dict)
+    created_at: datetime
+
+    model_config = {"frozen": False}
+
+
+class CurriculumVersion(BaseModel):
+    """A versioned snapshot of a seeder's curriculum after a revision."""
+
+    id: str
+    skill_id: str
+    seeder_id: str
+    version: str                    # semver — bumped on each revision
+    curriculum: list[str]
+    revision_reason: str
+    avg_bloom_rate: float | None = None
+    created_at: datetime
+
+    model_config = {"frozen": False}
+
+    @field_validator("version")
+    @classmethod
+    def validate_version(cls, v: str) -> str:
+        if not _SEMVER_RE.match(v):
+            raise ValueError("version must follow semver format")
+        return v
 
 
 class SeederProfile(BaseModel):
@@ -79,8 +127,11 @@ class SeederProfile(BaseModel):
     id: str
     skill_id: str
     agent_id: str
-    reputation_score: float = 0.0  # based on how many agents bloomed
+    reputation_score: float = 0.0
     total_learners: int = 0
-    is_root: bool = False  # True = curated by SkillSeed team
+    bloom_rate: float = 0.0         # % of growers who bloomed with this seeder
+    curriculum_version: str = "1.0.0"
+    is_root: bool = False
+    evolution_enabled: bool = False  # whether this seeder auto-revises curriculum
 
     model_config = {"frozen": False}

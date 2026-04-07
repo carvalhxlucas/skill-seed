@@ -1,0 +1,14 @@
+id: force-evolve-skill
+name: Evolution Test Skill
+version: 1.0.0
+category: test
+description: Tests the evolution loop.
+curriculum:
+- Task A
+- Task B
+eval_tasks:
+- Eval A
+seeder:
+  is_root: false
+  maintained_by: community
+  reputation_score: 0.0

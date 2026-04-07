@@ -18,11 +18,12 @@ from main import app
 async def client():
     """Async HTTP client pointed at the test app."""
     async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=True), base_url="http://test", headers={"lifespan": "on"}) as ac:
-        # Manually trigger lifespan startup so app.state is populated
         from services.learning_service import LearningService
         from services.eval_service import EvalService
+        from services.evolution_service import EvolutionService
         app.state.learning_service = LearningService()
         app.state.eval_service = EvalService()
+        app.state.evolution_service = EvolutionService()
         yield ac
 
 
@@ -296,6 +297,32 @@ class TestSeedRouter:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_seed_skill_returns_new_fields(self, client):
+        enroll = await client.post(
+            "/v1/agents/enroll",
+            json={"name": "FullSeeder", "framework": "custom"},
+        )
+        agent_id = enroll.json()["id"]
+        skill_payload = {
+            "id": "full-seeder-skill",
+            "name": "Full Seeder Skill",
+            "description": "Tests new seeder fields.",
+            "version": "1.0.0",
+            "category": "test",
+            "curriculum": ["Task A"],
+            "eval_tasks": ["Eval A"],
+        }
+        resp = await client.post(
+            "/v1/skills/seed",
+            json={"agent_id": agent_id, "skill": skill_payload},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert "bloom_rate" in data
+        assert "curriculum_version" in data
+        assert "evolution_enabled" in data
+
+    @pytest.mark.asyncio
     async def test_seed_skill_appears_in_registry(self, client):
         enroll = await client.post(
             "/v1/agents/enroll",
@@ -321,3 +348,80 @@ class TestSeedRouter:
         registry = await client.get("/v1/skills/registry?search=Community+Skill+XYZ")
         ids = [s["id"] for s in registry.json()]
         assert "community-skill-xyz" in ids
+
+
+# ---------------------------------------------------------------------------
+# Seeder evolution endpoints
+# ---------------------------------------------------------------------------
+
+class TestSeedersRouter:
+    async def _enroll_and_seed(self, client, skill_id: str = "evolution-test-skill"):
+        enroll = await client.post(
+            "/v1/agents/enroll",
+            json={"name": "EvoBot", "framework": "custom"},
+        )
+        agent_id = enroll.json()["id"]
+        skill_payload = {
+            "id": skill_id,
+            "name": "Evolution Test Skill",
+            "description": "Tests the evolution loop.",
+            "version": "1.0.0",
+            "category": "test",
+            "curriculum": ["Task A", "Task B"],
+            "eval_tasks": ["Eval A"],
+        }
+        seed_resp = await client.post(
+            "/v1/skills/seed",
+            json={"agent_id": agent_id, "skill": skill_payload},
+        )
+        return seed_resp.json()["id"]
+
+    @pytest.mark.asyncio
+    async def test_get_feedback_empty(self, client):
+        seeder_id = await self._enroll_and_seed(client, "feedback-empty-skill")
+        resp = await client.get(f"/v1/seeders/{seeder_id}/feedback")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    @pytest.mark.asyncio
+    async def test_get_feedback_not_found(self, client):
+        resp = await client.get("/v1/seeders/nonexistent-seeder/feedback")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_curriculum_history_empty(self, client):
+        seeder_id = await self._enroll_and_seed(client, "history-empty-skill")
+        resp = await client.get(f"/v1/seeders/{seeder_id}/curriculum/history")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    @pytest.mark.asyncio
+    async def test_evolve_force_returns_curriculum_version(self, client):
+        seeder_id = await self._enroll_and_seed(client, "force-evolve-skill")
+        resp = await client.post(
+            f"/v1/seeders/{seeder_id}/evolve",
+            json={"force": True},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data is not None
+        assert "version" in data
+        assert "revision_reason" in data
+        assert "curriculum" in data
+
+    @pytest.mark.asyncio
+    async def test_evolve_without_force_returns_null_when_insufficient_signals(self, client):
+        seeder_id = await self._enroll_and_seed(client, "no-force-evolve-skill")
+        resp = await client.post(
+            f"/v1/seeders/{seeder_id}/evolve",
+            json={"force": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json() is None  # not enough signals
+
+    @pytest.mark.asyncio
+    async def test_registry_never_exposes_shadow_eval_tasks(self, client):
+        resp = await client.get("/v1/skills/registry")
+        assert resp.status_code == 200
+        for skill in resp.json():
+            assert "shadow_eval_tasks" not in skill

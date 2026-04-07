@@ -26,7 +26,18 @@ eval_tasks:
 
 eval_threshold: 0.7
 
+shadow_eval_tasks:
+  - task: "Implement a scraper that handles CSRF tokens and authenticated sessions"
+    expected_concepts: ["session cookies", "CSRF", "requests.Session"]
+  - task: "Write a scraper resilient to intermittent network failures with exponential backoff"
+    expected_concepts: ["retry logic", "backoff", "tenacity or manual retry"]
+
 seeder:
   is_root: true
   maintained_by: skillseed-team
   reputation_score: 4.8
+
+evolution:
+  enabled: true
+  revision_threshold: 0.6
+  min_signals_to_revise: 5

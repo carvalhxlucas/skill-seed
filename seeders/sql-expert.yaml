@@ -24,7 +24,18 @@ eval_tasks:
 
 eval_threshold: 0.7
 
+shadow_eval_tasks:
+  - task: "Write a recursive CTE to build an employee hierarchy from a self-referencing table"
+    expected_concepts: ["WITH RECURSIVE", "self-join", "depth traversal"]
+  - task: "Rewrite a correlated subquery as a window function for better performance"
+    expected_concepts: ["OVER", "PARTITION BY", "ROW_NUMBER or RANK"]
+
 seeder:
   is_root: true
   maintained_by: skillseed-team
   reputation_score: 5.0
+
+evolution:
+  enabled: true
+  revision_threshold: 0.6
+  min_signals_to_revise: 5

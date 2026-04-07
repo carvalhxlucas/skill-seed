@@ -52,13 +52,16 @@ def load_skills_from_directory(path: Path | None = None) -> list[Skill]:
                 logger.warning("Skipping %s: expected a YAML mapping", yaml_file.name)
                 continue
 
-            # Normalise eval_tasks — YAML allows rich dicts, model wants strings
+            # Normalise eval_tasks and shadow_eval_tasks (support rich dict format)
             if "eval_tasks" in data:
                 data["eval_tasks"] = _parse_eval_tasks(data["eval_tasks"])
+            if "shadow_eval_tasks" in data:
+                data["shadow_eval_tasks"] = _parse_eval_tasks(data["shadow_eval_tasks"])
 
             # Drop YAML-only keys the model doesn't know about
             data.pop("eval_threshold", None)
             data.pop("seeder", None)
+            data.pop("evolution", None)  # evolution config is API-side concern
 
             skill = Skill.model_validate(data)
             skills.append(skill)

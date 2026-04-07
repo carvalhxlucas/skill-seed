@@ -17,6 +17,10 @@ Think of it as **npm for AI agent skills** — specialist agents (seeders) share
 | **Bloomed skill** | A skill that passed the automated eval after learning |
 | **Root Seeder** | Curated, trusted seeders maintained by the SkillSeed team |
 | **Garden** | The full network of agents and skills |
+| **Feedback signal** | The eval result sent back to the seeder after each learning session |
+| **Curriculum revision** | When a seeder updates its teaching based on accumulated feedback signals |
+| **Shadow eval** | A reserved set of eval tasks never exposed to seeders — used to prevent teaching-to-the-test |
+| **Reputation score** | A seeder's score based on the bloom rate of its learners over time |
 
 ---
 
@@ -36,12 +40,14 @@ skill-seed/
 │   │   ├── pyproject.toml
 │   │   ├── skillseed/
 │   │   │   ├── __init__.py
-│   │   │   ├── models.py              # Skill, Agent, SeederProfile, LearningSession
+│   │   │   ├── models.py              # Skill, Agent, SeederProfile, LearningSession, FeedbackSignal
 │   │   │   ├── protocol.py            # SkillTransferProtocol (abstract base)
 │   │   │   ├── registry.py            # SkillRegistry (in-memory + interface)
-│   │   │   └── eval.py                # SkillEvaluator (base class)
+│   │   │   ├── eval.py                # SkillEvaluator (base class) + ShadowEval
+│   │   │   └── evolution.py           # SeederEvolution — feedback loop + curriculum revision
 │   │   └── tests/
-│   │       └── test_models.py
+│   │       ├── test_models.py
+│   │       └── test_evolution.py
 │   │
 │   ├── api/                           # REST API (FastAPI)
 │   │   ├── pyproject.toml
@@ -52,7 +58,8 @@ skill-seed/
 │   │   │   └── seed.py                # POST /v1/skills/seed
 │   │   ├── services/
 │   │   │   ├── learning_service.py    # orchestrates the seeding protocol
-│   │   │   └── eval_service.py        # runs evals and certifies skills
+│   │   │   ├── eval_service.py        # runs evals and certifies skills
+│   │   │   └── evolution_service.py   # sends feedback signals + triggers curriculum revision
 │   │   └── tests/
 │   │       └── test_routers.py
 │   │
@@ -106,6 +113,7 @@ class Skill(BaseModel):
     category: str
     curriculum: list[str]      # list of tasks the seeder uses to teach
     eval_tasks: list[str]      # tasks used to benchmark the grower
+    shadow_eval_tasks: list[str]  # NEVER exposed to seeders — anti-gaming protection
 
 class AgentProfile(BaseModel):
     id: str
@@ -117,19 +125,45 @@ class LearningSession(BaseModel):
     id: str
     agent_id: str
     skill_id: str
+    seeder_id: str
     status: Literal["pending", "learning", "evaluating", "bloomed", "failed"]
     started_at: datetime
     completed_at: datetime | None
-    eval_score: float | None   # 0.0 to 1.0
-    learned_state: dict        # system prompt delta, memory injections, etc
+    eval_score: float | None        # 0.0 to 1.0 (public eval)
+    shadow_eval_score: float | None # 0.0 to 1.0 (shadow eval — not shown to seeder)
+    failed_tasks: list[str]         # which eval tasks the grower failed
+    learned_state: dict             # system prompt delta, memory injections, etc
+
+class FeedbackSignal(BaseModel):
+    id: str
+    seeder_id: str
+    skill_id: str
+    session_id: str
+    eval_score: float               # public score only — shadow score never sent
+    failed_tasks: list[str]         # tasks the grower failed
+    grower_responses: dict          # task → grower's actual response
+    created_at: datetime
+
+class CurriculumVersion(BaseModel):
+    id: str
+    skill_id: str
+    seeder_id: str
+    version: str                    # semver — bumped on each revision
+    curriculum: list[str]
+    revision_reason: str            # why this revision was made
+    avg_bloom_rate: float | None    # tracked after rollout
+    created_at: datetime
 
 class SeederProfile(BaseModel):
     id: str
     skill_id: str
     agent_id: str
-    reputation_score: float    # based on how many agents bloomed from this seeder
+    reputation_score: float         # based on bloom rate of learners over time
     total_learners: int
-    is_root: bool              # True = curated by SkillSeed team
+    bloom_rate: float               # % of growers who bloomed with this seeder
+    curriculum_version: str         # current semver of the curriculum
+    is_root: bool                   # True = curated by SkillSeed team
+    evolution_enabled: bool         # whether this seeder auto-revises curriculum
 ```
 
 ---
@@ -173,7 +207,117 @@ Future protocols to stub (not implement yet):
 
 ---
 
-### Step 3 — REST API (`packages/api`)
+### Step 3 — Seeder Self-Improvement (`packages/core/evolution.py`)
+
+This is the layer that makes SkillSeed different from a static skill marketplace. Seeders autonomously improve their curriculum based on accumulated feedback from learners.
+
+**Three levels of evolution — implement in order:**
+
+**Level 1 — Reactive improvement** (implement first)
+
+After every failed session, a `FeedbackSignal` is sent to the seeder. The seeder uses it to revise weak parts of the curriculum.
+
+```python
+class SeederEvolution:
+    """
+    Manages the self-improvement loop for a seeder.
+    Triggered automatically after each LearningSession completes.
+    """
+
+    async def on_session_complete(self, session: LearningSession) -> None:
+        """
+        Called after every session — bloomed or failed.
+        If score < revision_threshold, generate and store a FeedbackSignal.
+        """
+        if session.eval_score < self.revision_threshold:
+            signal = FeedbackSignal(
+                seeder_id=session.seeder_id,
+                skill_id=session.skill_id,
+                session_id=session.id,
+                eval_score=session.eval_score,        # public score only
+                failed_tasks=session.failed_tasks,
+                grower_responses=session.learned_state.get("responses", {}),
+            )
+            await self.store_signal(signal)
+            await self.maybe_revise(session.seeder_id, session.skill_id)
+
+    async def maybe_revise(self, seeder_id: str, skill_id: str) -> CurriculumVersion | None:
+        """
+        Revise the curriculum if enough failure signals have accumulated.
+        Default: revise after 5 failures or when bloom_rate drops below 0.6.
+        Calls LLM to generate an improved curriculum based on failure patterns.
+        Returns a new CurriculumVersion if revision happened, None otherwise.
+        """
+        ...
+```
+
+**Level 2 — Proactive improvement** (implement second)
+
+Instead of waiting for failures, the seeder periodically analyzes patterns across all sessions to find weak spots before they cause failures.
+
+```python
+    async def analyze_failure_patterns(
+        self,
+        seeder_id: str,
+        skill_id: str,
+        last_n: int = 100,
+    ) -> list[WeakSpot]:
+        """
+        Scans the last N sessions and identifies which curriculum tasks
+        correlate with low eval scores. Returns a ranked list of weak spots.
+        Example: "CTEs appear in 80% of failed sessions → strengthen that task"
+        """
+        ...
+
+    async def strengthen_curriculum(
+        self,
+        seeder_id: str,
+        weak_spots: list[WeakSpot],
+    ) -> CurriculumVersion:
+        """
+        Calls LLM with the current curriculum + weak spots to generate
+        a revised curriculum that better prepares growers for those tasks.
+        Saves as a new CurriculumVersion with bumped semver.
+        """
+        ...
+```
+
+**Level 3 — Cross-seeder learning** (stub only, implement later)
+
+High-performing seeders can share their teaching approach with lower-performing seeders of different skills.
+
+```python
+    async def cross_pollinate(
+        self,
+        source_seeder_id: str,   # high bloom rate seeder
+        target_seeder_id: str,   # low bloom rate seeder, different skill
+    ) -> None:
+        """
+        Extracts teaching patterns from the source seeder's curriculum history
+        and applies analogous improvements to the target seeder.
+        STUB — do not implement in MVP. Design the interface only.
+        """
+        ...
+```
+
+**Shadow eval — anti-gaming protection**
+
+The shadow eval tasks are stored separately and never included in the `FeedbackSignal` sent to seeders. Only the public `eval_score` and `failed_tasks` from the public eval are shared. This prevents seeders from teaching directly to the test.
+
+```python
+class ShadowEval:
+    """
+    Runs alongside the public eval but results are NEVER sent to the seeder.
+    Used internally to validate that the public bloom rate is not inflated.
+    If shadow_eval_score < public eval_score by more than 0.2, flag the seeder
+    for review — it may be teaching to the test.
+    """
+    drift_threshold: float = 0.2
+```
+
+---
+
+### Step 4 — REST API (`packages/api`)
 
 FastAPI app. Keep it minimal for MVP.
 
@@ -201,13 +345,23 @@ GET  /v1/skills/learn/{session_id}
 POST /v1/skills/seed
   body: { agent_id, skill } 
   returns: SeederProfile
+
+GET  /v1/seeders/{seeder_id}/feedback
+  returns: list[FeedbackSignal]
+
+GET  /v1/seeders/{seeder_id}/curriculum/history
+  returns: list[CurriculumVersion]
+
+POST /v1/seeders/{seeder_id}/evolve
+  body: { force: bool }        # force a revision even if threshold not met
+  returns: CurriculumVersion | null
 ```
 
 Use **async FastAPI**, **Pydantic v2**, **PostgreSQL** (via asyncpg or SQLAlchemy async) for persistence, **Redis** for session state during learning.
 
 ---
 
-### Step 4 — Python SDK (`packages/sdk-python`)
+### Step 5 — Python SDK (`packages/sdk-python`)
 
 Thin wrapper around the REST API. DX is everything here — make it feel like the simplest possible interface.
 
@@ -231,11 +385,20 @@ skills = ss.registry.search("data")
 
 # become a seeder
 ss.seed(agent_id=agent.id, skill=my_skill_definition)
+
+# check your seeder feedback
+seeder = ss.seeders.get(seeder_id="...")
+signals = seeder.feedback(last_n=50)
+
+# trigger curriculum revision manually
+new_version = seeder.evolve()
+print(new_version.revision_reason)   # why the LLM revised it
+print(new_version.version)           # e.g. "1.2.0"
 ```
 
 ---
 
-### Step 5 — MCP Server (`packages/mcp-server`)
+### Step 6 — MCP Server (`packages/mcp-server`)
 
 FastMCP server exposing 4 tools for Claude Code.
 
@@ -263,7 +426,7 @@ Also implement **SKILL_SEED.md auto-detection**: when Claude Code starts a sessi
 
 ---
 
-### Step 6 — Root Seeder definitions (`seeders/`)
+### Step 7 — Root Seeder definitions (`seeders/`)
 
 Define the first 3 root seeders as YAML. These are the source of truth for each skill.
 
@@ -286,7 +449,16 @@ eval_tasks:
     expected_concepts: ["GROUP BY", "HAVING", "date filtering"]
   - task: "Write a query to detect duplicate email addresses in a users table"
     expected_concepts: ["GROUP BY", "HAVING COUNT > 1"]
+shadow_eval_tasks:
+  - task: "Write a recursive CTE to build an employee hierarchy from a self-referencing table"
+    expected_concepts: ["WITH RECURSIVE", "self-join", "depth traversal"]
+  - task: "Rewrite a correlated subquery as a window function"
+    expected_concepts: ["OVER", "PARTITION BY", "ROW_NUMBER or RANK"]
 eval_threshold: 0.7
+evolution:
+  enabled: true
+  revision_threshold: 0.6     # bloom rate below this triggers revision
+  min_signals_to_revise: 5    # minimum feedback signals before first revision
 ```
 
 ---
@@ -317,6 +489,9 @@ DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/skillseed
 REDIS_URL=redis://localhost:6379
 EVAL_THRESHOLD=0.7
 ROOT_SEEDER_PATH=./seeders
+EVOLUTION_REVISION_THRESHOLD=0.6
+EVOLUTION_MIN_SIGNALS=5
+SHADOW_EVAL_DRIFT_THRESHOLD=0.2
 ```
 
 ---
@@ -328,6 +503,9 @@ ROOT_SEEDER_PATH=./seeders
 3. **Framework-agnostic** — the SDK works with LangChain, LangGraph, CrewAI, AutoGen, or any custom agent.
 4. **MCP-native** — Claude Code is a first-class citizen. The MCP server should feel seamless.
 5. **Open protocol** — the skill transfer protocol and YAML schema are public specs. Anyone can implement a compatible seeder.
+6. **Self-improving seeders** — seeders autonomously revise their curriculum based on learner feedback. The network gets smarter over time without manual intervention.
+7. **Shadow eval integrity** — shadow eval tasks are never exposed to seeders under any circumstance, including via API, SDK, or logs. This is non-negotiable.
+8. **Curriculum versioning** — every revision creates a new `CurriculumVersion`. Never mutate in place. This allows rollback and A/B comparison between versions.
 
 ---
 
@@ -335,8 +513,10 @@ ROOT_SEEDER_PATH=./seeders
 
 1. Create the monorepo structure above
 2. Implement `packages/core` first — models, protocol base class, registry interface
-3. Write tests for the models before moving to the API
-4. Then build the API, SDK, and MCP server in that order
-5. Keep each package independently installable via pip
+3. Implement `evolution.py` — Level 1 (reactive) only for MVP
+4. Write tests for models and evolution before moving to the API
+5. Then build the API, SDK, and MCP server in that order
+6. Keep each package independently installable via pip
+7. Never expose `shadow_eval_tasks` in any public-facing response
 
 Ask me before making architectural decisions not covered in this document.

@@ -53,6 +53,7 @@ class PromptDistillationProtocol(SkillTransferProtocol):
             id=session_id,
             agent_id=grower.id,
             skill_id=skill.id,
+            seeder_id=seeder.id,
             status="learning",
             started_at=now,
         )
@@ -76,6 +77,11 @@ class PromptDistillationProtocol(SkillTransferProtocol):
             session.status = "failed"
 
         session.completed_at = datetime.now(timezone.utc)
+
+        # Identify which eval tasks the grower failed (stub: mark last task if score is low)
+        if eval_score < self.threshold and skill.eval_tasks:
+            session.failed_tasks = [skill.eval_tasks[-1]]
+
         session.learned_state = {
             "system_prompt_delta": system_prompt,
             "skill_id": skill.id,

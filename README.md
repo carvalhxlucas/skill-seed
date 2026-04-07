@@ -24,19 +24,17 @@ Today, when you want your AI agent to do something specific — query SQL, scrap
 
 **SkillSeed is a network where agents teach other agents.**
 
-Specialist agents (*seeders*) share validated, benchmarked skills. Your agent (*grower*) learns from them in minutes — not days.
+Specialist agents (*seeders*) share validated, benchmarked skills. Your agent (*grower*) learns from them in minutes. And the network gets smarter over time — seeders autonomously revise their curriculum based on what growers fail at.
 
 ```python
 from skillseed import SkillSeed
 
-network = SkillSeed(api_key="...")
-my_agent = network.enroll(agent=my_agent)
+ss = SkillSeed(api_key="sk-...")
+agent = ss.enroll(name="my-assistant", framework="langchain")
 
-my_agent.learn("sql-expert")
-my_agent.learn("web-scraper")
-
-# your agent now knows SQL and web scraping
-# validated, certified, ready to use
+session = agent.learn("sql-expert")
+print(session.status)        # "bloomed"
+print(session.learned_state) # {"system_prompt_delta": "You are an expert in SQL..."}
 ```
 
 ---
@@ -44,24 +42,59 @@ my_agent.learn("web-scraper")
 ## How it works
 
 ```
-Seeder (SQL expert) ──seeding──▶ Your agent ──▶ Bloomed skill
-Seeder (SEO expert) ──seeding──▶ Your agent
+Seeder (SQL Expert) ──teaches──▶ Grower ──eval──▶ Bloomed skill ✓
+                                           ↑
+                              FeedbackSignal sent back to seeder
+                                           ↓
+                              Seeder revises curriculum autonomously
 ```
 
 **Three roles in the network:**
 
 | Role | Can learn? | Can teach? | Requirement |
 |---|---|---|---|
-| Grower | ✅ | ❌ | Just sign up |
-| Certified | ✅ | ✅ | Pass skill eval |
+| Grower | ✅ | ❌ | Just enroll |
+| Seeder | ✅ | ✅ | Contribute a skill |
 | Root Seeder | ✅ | ✅ | Curated by SkillSeed |
 
 **How learning happens:**
 
-1. Your agent receives the skill curriculum from a certified seeder
-2. It attempts tasks based on that curriculum
-3. An automated eval benchmarks performance before and after
-4. If the eval passes, the skill is marked as **bloomed** on your agent
+1. Your agent receives the skill curriculum from a seeder
+2. The **Prompt Distillation Protocol** generates an expert system prompt from the curriculum
+3. An automated eval benchmarks the result
+4. A **shadow eval** (tasks never shown to the seeder) validates integrity — preventing teaching-to-the-test
+5. If eval score ≥ threshold → skill is marked **bloomed** on your agent
+6. A `FeedbackSignal` is sent back to the seeder (public score only — shadow results stay private)
+7. If the seeder's bloom rate drops, it **autonomously revises its curriculum**
+
+---
+
+## Self-improving seeders
+
+What makes SkillSeed different from a static prompt library: **seeders get better over time without manual intervention.**
+
+```
+Session 1: grower fails "CTE optimization" → FeedbackSignal created
+Session 2: grower fails "CTE optimization" → FeedbackSignal created
+Session 5: bloom rate drops below threshold
+           → SeederEvolution analyzes failure patterns
+           → Identifies "CTE optimization" as weak spot
+           → Generates revised curriculum (v1.1.0)
+           → Future growers learn from the improved curriculum
+```
+
+Curriculum revisions are versioned — every change is tracked, never mutated in place, and can be rolled back.
+
+---
+
+## Shadow eval — anti-gaming protection
+
+Every skill has two eval sets:
+
+- **Public eval tasks** — shared with seeders via `FeedbackSignal` so they can improve
+- **Shadow eval tasks** — never exposed to seeders under any circumstance
+
+If a seeder's shadow score lags significantly behind its public score, it gets flagged for review. This prevents a seeder from gaming the system by teaching directly to the public test questions.
 
 ---
 
@@ -71,7 +104,7 @@ Seeder (SEO expert) ──seeding──▶ Your agent
 claude mcp add skill-seed
 ```
 
-Then just declare what your agent should know in `SKILL_SEED.md`:
+Then declare what your agent should know in `SKILL_SEED.md`:
 
 ```yaml
 # SKILL_SEED.md
@@ -81,7 +114,7 @@ skills:
   - code-reviewer
 ```
 
-Claude Code reads this file and your agent starts each session with all skills loaded. No manual setup.
+Claude Code reads this file on startup and auto-triggers a learning session for each declared skill. No manual setup.
 
 ---
 
@@ -90,24 +123,27 @@ Claude Code reads this file and your agent starts each session with all skills l
 ```bash
 pip install skillseed
 ```
-> ⚠️ Package not yet published. Follow the repo for updates.
+
+> Package not yet published. Follow the repo for updates.
 
 ```python
 from skillseed import SkillSeed
 
-network = SkillSeed(api_key="sk-...")
+ss = SkillSeed(api_key="sk-...")
 
 # enroll your agent
-agent = network.enroll(agent=my_langchain_agent)
+agent = ss.enroll(name="my-assistant", framework="langchain")
 
-# learn a skill
-agent.learn("sql-expert")
+# learn a skill — blocks until bloomed or failed
+session = agent.learn("sql-expert")
+print(session.status)         # "bloomed"
+print(session.eval_score)     # 0.85
 
 # list available skills
-skills = network.registry.search("data analysis")
+skills = ss.registry.search("data")
 
 # contribute a skill (become a seeder)
-network.seed(skill_name="pandas-expert", curriculum=my_curriculum)
+ss.seed(agent_id=agent.id, skill=my_skill_definition)
 ```
 
 ---
@@ -116,39 +152,118 @@ network.seed(skill_name="pandas-expert", curriculum=my_curriculum)
 
 ```http
 POST /v1/agents/enroll
-POST /v1/skills/learn
-GET  /v1/skills/registry
 GET  /v1/agents/{id}/skills
+
+GET  /v1/skills/registry?category=data&search=sql
+POST /v1/skills/learn
+GET  /v1/skills/learn/{session_id}
+POST /v1/skills/reload
+
 POST /v1/skills/seed
+
+GET  /v1/seeders/{id}/feedback
+GET  /v1/seeders/{id}/curriculum/history
+POST /v1/seeders/{id}/evolve
 ```
 
 Works with any language, any framework — LangChain, LangGraph, CrewAI, AutoGen, custom.
+
+All endpoints require `X-API-Key` authentication. The `/v1/skills/reload` and `/v1/seeders/{id}/evolve` endpoints require `X-Admin-Key`.
 
 ---
 
 ## Skill Registry
 
-Browse available skills at [skillseed.dev/registry](https://skillseed.dev/registry).
-
-| Skill | Seeder | Learners | Status |
+| Skill | Category | Seeder | Status |
 |---|---|---|---|
-| `sql-expert` | @root | — | 🌱 coming soon |
-| `web-scraper` | @root | — | 🌱 coming soon |
-| `code-reviewer` | @root | — | 🌱 coming soon |
+| `sql-expert` | data | @root | 🌱 in development |
+| `web-scraper` | automation | @root | 🌱 in development |
+| `code-reviewer` | engineering | @root | 🌱 in development |
 
-> Registry is being built. Star the repo to follow progress.
+Adding a new skill is as simple as dropping a YAML file in `seeders/`:
+
+```yaml
+# seeders/my-skill.yaml
+id: my-skill
+name: My Skill
+version: 1.0.0
+category: data
+description: >
+  What this skill teaches.
+curriculum:
+  - "Task 1 the seeder uses to teach"
+  - "Task 2 the seeder uses to teach"
+eval_tasks:
+  - task: "What the grower must demonstrate"
+    expected_concepts: ["concept A", "concept B"]
+shadow_eval_tasks:
+  - task: "Hidden eval — never shown to seeders"
+    expected_concepts: ["concept C"]
+evolution:
+  enabled: true
+  revision_threshold: 0.6
+  min_signals_to_revise: 5
+```
+
+Then hit `POST /v1/skills/reload` — no restart needed.
+
+---
+
+## Running locally
+
+```bash
+git clone https://github.com/skill-seed/skill-seed
+cd skill-seed
+
+cp .env.example .env  # fill in your values
+
+# start postgres + redis
+docker-compose up -d postgres redis
+
+# install packages
+pip install -e packages/core packages/api packages/sdk-python packages/mcp-server
+
+# run the API
+uvicorn packages.api.main:app --reload --port 8000
+
+# run tests
+make test
+```
+
+---
+
+## Project structure
+
+```
+skill-seed/
+├── packages/
+│   ├── core/          # models, protocol, registry, evaluators, evolution
+│   ├── api/           # FastAPI REST API
+│   ├── sdk-python/    # Python SDK
+│   └── mcp-server/    # MCP server for Claude Code
+├── seeders/           # Root Seeder YAML definitions
+├── docker-compose.yml
+└── Makefile
+```
 
 ---
 
 ## Roadmap
 
-- [ ] Core skill transfer protocol
-- [ ] REST API
-- [ ] Python SDK
-- [ ] MCP Server (Claude Code integration)
-- [ ] Skill Registry (public)
+- [x] Core skill transfer protocol (Prompt Distillation)
+- [x] REST API (FastAPI)
+- [x] Python SDK
+- [x] MCP Server (Claude Code integration)
+- [x] YAML-driven skill registry (hot-reload)
+- [x] Seeder self-improvement loop (Level 1 — reactive)
+- [x] Failure pattern analysis (Level 2 — proactive)
+- [x] Shadow eval integrity protection
+- [x] Curriculum versioning
+- [ ] LLM integration for real prompt distillation (OpenAI / Claude)
+- [ ] PostgreSQL + Redis persistence (replace in-memory)
+- [ ] Public skill registry at skillseed.dev
 - [ ] Certified seeder program
-- [ ] Skill versioning
+- [ ] Cross-seeder learning (Level 3)
 - [ ] JS/TS SDK
 
 ---
@@ -157,13 +272,7 @@ Browse available skills at [skillseed.dev/registry](https://skillseed.dev/regist
 
 SkillSeed is open-source and community-driven. Every skill in the network is a contribution.
 
-```bash
-git clone https://github.com/skill-seed/skill-seed
-cd skill-seed
-pip install -e ".[dev]"
-```
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to propose new skills, improve the protocol, or build SDKs for other languages.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to propose new skills, improve the transfer protocol, or build SDKs for other languages.
 
 ---
 

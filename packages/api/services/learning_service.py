@@ -90,18 +90,37 @@ class LearningService:
             raise ValueError(f"Skill '{skill_id}' not found in registry.")
 
         # Create a root seeder for built-in skills
-        seeder = SeederProfile(
-            id=f"root-{skill_id}",
-            skill_id=skill_id,
-            agent_id="skillseed-root",
-            reputation_score=5.0,
-            total_learners=0,
-            is_root=True,
-        )
-
+        seeder = self._get_or_create_root_seeder(skill)
         session = await self._protocol.transfer(skill, seeder, agent)
+
+        # Update seeder stats
+        seeder.total_learners += 1
+        if session.status == "bloomed":
+            bloomed_count = sum(
+                1 for s in self._sessions.values()
+                if s.skill_id == skill_id and s.status == "bloomed"
+            ) + 1
+            seeder.bloom_rate = round(bloomed_count / seeder.total_learners, 3)
+
         self._sessions[session.id] = session
         return session
+
+    def _get_or_create_root_seeder(self, skill: Skill) -> SeederProfile:
+        """Return or create the root seeder for a built-in skill."""
+        root_id = f"root-{skill.id}"
+        if root_id not in self._seeders:
+            self._seeders[root_id] = SeederProfile(
+                id=root_id,
+                skill_id=skill.id,
+                agent_id="skillseed-root",
+                reputation_score=5.0,
+                total_learners=0,
+                bloom_rate=0.0,
+                curriculum_version=skill.version,
+                is_root=True,
+                evolution_enabled=True,
+            )
+        return self._seeders[root_id]
 
     def get_session(self, session_id: str) -> LearningSession | None:
         return self._sessions.get(session_id)
@@ -130,7 +149,10 @@ class LearningService:
             agent_id=agent_id,
             reputation_score=0.0,
             total_learners=0,
+            bloom_rate=0.0,
+            curriculum_version=skill.version,
             is_root=False,
+            evolution_enabled=False,
         )
         self._seeders[seeder.id] = seeder
         return seeder

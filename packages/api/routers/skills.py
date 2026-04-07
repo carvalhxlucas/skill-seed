@@ -9,6 +9,15 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 from skillseed_core.models import LearningSession, Skill
+from pydantic import Field as PydanticField
+
+
+class SkillPublic(Skill):
+    """Public-facing Skill response — shadow_eval_tasks is NEVER exposed.
+
+    This model is the only way skills should be serialized in API responses.
+    """
+    shadow_eval_tasks: list[str] = PydanticField(default_factory=list, exclude=True)
 
 # A-3: admin key for privileged endpoints (reload)
 _ADMIN_KEY = os.environ.get("SKILLSEED_ADMIN_KEY", os.environ.get("SKILLSEED_API_KEY", ""))
@@ -31,7 +40,7 @@ class LearnRequest(BaseModel):
     skill_id: str
 
 
-@router.get("/skills/registry", response_model=list[Skill])
+@router.get("/skills/registry", response_model=list[SkillPublic])
 async def get_registry(
     request: Request,
     category: str = Query(default="", description="Filter by category"),

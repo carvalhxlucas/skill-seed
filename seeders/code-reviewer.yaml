@@ -35,7 +35,18 @@ eval_tasks:
 
 eval_threshold: 0.7
 
+shadow_eval_tasks:
+  - task: "Review this async Python function for race conditions and suggest fixes using asyncio.Lock"
+    expected_concepts: ["asyncio.Lock", "race condition", "shared state"]
+  - task: "Identify the security vulnerability and fix: `query = f'SELECT * FROM users WHERE id={user_id}'`"
+    expected_concepts: ["SQL injection", "parameterized queries", "f-string danger"]
+
 seeder:
   is_root: true
   maintained_by: skillseed-team
   reputation_score: 4.9
+
+evolution:
+  enabled: true
+  revision_threshold: 0.6
+  min_signals_to_revise: 5

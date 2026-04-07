@@ -51,7 +51,10 @@ def seeder_profile(sql_skill) -> SeederProfile:
         agent_id="root-agent",
         reputation_score=4.8,
         total_learners=120,
+        bloom_rate=0.8,
+        curriculum_version="1.0.0",
         is_root=True,
+        evolution_enabled=True,
     )
 
 
@@ -220,7 +223,10 @@ class TestSeederProfile:
         )
         assert seeder.reputation_score == 0.0
         assert seeder.total_learners == 0
+        assert seeder.bloom_rate == 0.0
+        assert seeder.curriculum_version == "1.0.0"
         assert seeder.is_root is False
+        assert seeder.evolution_enabled is False
 
     def test_seeder_serialization(self, seeder_profile):
         data = seeder_profile.model_dump()
