@@ -24,8 +24,17 @@ async def seed_skill(
     Returns:
         SeederProfile dict with the new seeder's ID and metadata.
     """
-    # Derive a URL-safe skill ID from the name
-    skill_id = skill_name.lower().replace(" ", "-").replace("_", "-")
+    # M-1: derive a safe skill ID — strip anything that isn't alphanumeric or hyphen,
+    # collapse consecutive hyphens, and enforce the same 3-64 char rule as the model
+    import re
+    slug = re.sub(r"[^a-z0-9\-]", "", skill_name.lower().replace(" ", "-").replace("_", "-"))
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    if len(slug) < 3 or len(slug) > 64:
+        raise ValueError(
+            f"Skill name '{skill_name}' produces an invalid ID '{slug}'. "
+            "Use a name between 3 and 64 alphanumeric characters."
+        )
+    skill_id = slug
 
     agent_id = get_agent_id()
 

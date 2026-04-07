@@ -19,7 +19,12 @@ class SkillEvaluator(ABC):
 class SimpleEvaluator(SkillEvaluator):
     """Stub evaluator that always returns a passing score.
 
-    Used for MVP / testing when no real LLM evaluation is available.
+    .. warning::
+        **Never use in production.** This evaluator bypasses all skill
+        certification gates — every skill will be marked as "bloomed"
+        regardless of quality. It exists solely for unit tests and local
+        development without LLM credentials.
+
     Returns 0.8, which passes the default threshold of 0.7.
     """
 

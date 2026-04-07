@@ -76,10 +76,16 @@ def persist_skill_to_yaml(skill: Skill, path: Path | None = None) -> Path:
 
     Returns the path of the written file.
     """
-    directory = path or _resolve_seeders_path()
+    directory = (path or _resolve_seeders_path()).resolve()
     directory.mkdir(parents=True, exist_ok=True)
 
-    yaml_file = directory / f"{skill.id}.yaml"
+    # C-1: confinement check — resolve the full path and verify it stays within directory
+    yaml_file = (directory / f"{skill.id}.yaml").resolve()
+    if yaml_file.parent != directory:
+        raise ValueError(
+            f"Skill ID '{skill.id}' resolves outside the seeders directory. "
+            "This may indicate a path traversal attempt."
+        )
     data = {
         "id": skill.id,
         "name": skill.name,

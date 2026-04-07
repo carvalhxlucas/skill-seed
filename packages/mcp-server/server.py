@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
-from mcp_config import get_http_client
+from mcp_config import get_http_client, set_agent_id
 from tools.search_skills import search_skills as _search_skills
 from tools.learn_skill import learn_skill as _learn_skill
 from tools.get_my_skills import get_my_skills as _get_my_skills
@@ -157,7 +157,8 @@ async def _startup() -> None:
                 )
                 resp.raise_for_status()
                 agent_id = resp.json()["id"]
-                os.environ["SKILLSEED_AGENT_ID"] = agent_id
+                # M-5: store in app memory, not os.environ
+                set_agent_id(agent_id)
                 print(f"[SkillSeed] Enrolled MCP agent: {agent_id}")
         except Exception as exc:
             print(f"[SkillSeed] Could not enroll agent (API may be offline): {exc}")

@@ -13,16 +13,23 @@ import httpx
 SKILLSEED_API_URL = os.environ.get("SKILLSEED_API_URL", "http://localhost:8000")
 SKILLSEED_API_KEY = os.environ.get("SKILLSEED_API_KEY", "")
 
-# Persistent agent ID for this MCP session (stored in env or generated once)
-_SESSION_AGENT_ID: str | None = None
+# M-5: keep agent ID in application memory, not in os.environ
+# Seed from env if pre-configured, but never write back to os.environ
+_SESSION_AGENT_ID: str | None = os.environ.get("SKILLSEED_AGENT_ID")
 
 
 def get_agent_id() -> str:
     """Return the persistent agent ID for this MCP session."""
     global _SESSION_AGENT_ID
     if _SESSION_AGENT_ID is None:
-        _SESSION_AGENT_ID = os.environ.get("SKILLSEED_AGENT_ID", str(uuid.uuid4()))
+        _SESSION_AGENT_ID = str(uuid.uuid4())
     return _SESSION_AGENT_ID
+
+
+def set_agent_id(agent_id: str) -> None:
+    """Store the enrolled agent ID in application memory (not in os.environ)."""
+    global _SESSION_AGENT_ID
+    _SESSION_AGENT_ID = agent_id
 
 
 @asynccontextmanager

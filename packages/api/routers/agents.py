@@ -34,7 +34,8 @@ async def get_agent_skills(agent_id: str, request: Request) -> list[str]:
     service = request.app.state.learning_service
     agent = service.get_agent(agent_id)
     if agent is None:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found.")
+        # M-2: generic message — do not confirm whether the ID exists
+        raise HTTPException(status_code=404, detail="Agent not found.")
     return agent.bloomed_skills
 
 
@@ -44,5 +45,5 @@ async def get_agent(agent_id: str, request: Request) -> AgentProfile:
     service = request.app.state.learning_service
     agent = service.get_agent(agent_id)
     if agent is None:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found.")
+        raise HTTPException(status_code=404, detail="Agent not found.")
     return agent
