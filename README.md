@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/skill-seed/skill-seed/stargazers"><img src="https://img.shields.io/github/stars/skill-seed/skill-seed?style=flat-square" alt="Stars"/></a>
-  <a href="https://github.com/skill-seed/skill-seed/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"/></a>
+  <a href="https://github.com/carvalhxlucas/skill-seed/stargazers"><img src="https://img.shields.io/github/stars/carvalhxlucas/skill-seed?style=flat-square" alt="Stars"/></a>
+  <a href="https://github.com/carvalhxlucas/skill-seed/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"/></a>
   <a href="https://skillseed.dev/docs"><img src="https://img.shields.io/badge/docs-skillseed.dev-blue?style=flat-square" alt="Docs"/></a>
   <img src="https://img.shields.io/badge/status-early%20development-orange?style=flat-square" alt="Status"/>
 </p>
@@ -90,6 +90,7 @@ Claude Code reads this file and your agent starts each session with all skills l
 ```bash
 pip install skillseed
 ```
+> ⚠️ Package not yet published. Follow the repo for updates.
 
 ```python
 from skillseed import SkillSeed
